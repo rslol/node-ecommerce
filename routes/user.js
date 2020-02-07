@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const key = require('../config/keys');
 const validateLogin = require('../validation/login');
 const validateRegistration = require('../validation/register');
+const User = require('../models/User');
+const config = require('../config/keys');
 
 /**
  * @route GET user/test
@@ -50,9 +52,31 @@ router.post('/register', async (req, res) => {
                 apartmentNumber
             }); 
 
-            
+            const salt = await bcrypt.genSalt(10);
+            newUser.password = await bcrypt.hash(password, salt);
+            await user.save();
+
+            // Give new register user a token 
+            const payload = {
+                user: {
+                    id: user.id
+                }
+            };
+
+            jwy.sign(
+                payload, 
+                config.secret,
+                // Time token last
+                { expiresIn: 36000 }, 
+                (err, token) => {
+                    if (err) throw err; 
+                    res.json({ token });
+                }
+            )
+
         } 
     } catch (e) {
-
+        console.error(e);
+        res.status(500).json({ error: e});
     }
 })
