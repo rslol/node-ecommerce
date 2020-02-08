@@ -25,9 +25,8 @@ router.get('/test', (req, res) => {
 router.post('/register', async (req, res) => {
     req.body = req.sanitize(req.body);
     const { err, isValid } = validateRegistration(red.body);
-    if (!isValid) {
-        return res.status(400).json(err);
-    }
+
+    if (!isValid) return res.status(400).json(err);
 
     const { userName, email, password, streetAddress, city, state, country, zipCode } = req.body;
     let { apartmentNumber } = req.body;
@@ -35,6 +34,7 @@ router.post('/register', async (req, res) => {
     if (!apartmentNumber || apartmentNumber === null || apartmentNumber === undefined) apartmentNumber = '';
 
     try {
+        // Check if the user exist 
         const user = await User.findOne({ userName });
         if (user) {
             err.userName = "Username Already Exist";
@@ -54,16 +54,16 @@ router.post('/register', async (req, res) => {
 
             const salt = await bcrypt.genSalt(10);
             newUser.password = await bcrypt.hash(password, salt);
-            await user.save();
+            await newUser.save();
 
             // Give new register user a token 
             const payload = {
                 user: {
-                    id: user.id
+                    id: newUser.id
                 }
             };
 
-            jwy.sign(
+            jwt.sign(
                 payload, 
                 config.secret,
                 // Time token last
@@ -77,6 +77,60 @@ router.post('/register', async (req, res) => {
         } 
     } catch (e) {
         console.error(e);
-        res.status(500).json({ error: e});
+        res.status(500).json({ error: e });
     }
-})
+});
+
+/**
+ * @route POST user/login
+ * @desc Login Route 
+ * @access Public
+ */
+
+ router.post('/login', async (req, res) => {
+     req.body = sanitize(req.body);
+
+     const { isValid, err } = validateLogin(req.body);
+
+     if (!isValid) return res.status(400).json(err);
+
+     const { userName, password } = req.body;
+
+     try {
+        // Check if username exist
+        let user = await User.findOne({ userName });
+        // If no user, throw err
+        if (!user) {
+            err.userName = "Incorrect Username";
+            return res.status(400).json(err);
+        }
+        // Check if password is correct
+        const passwordCheck = await bcrypt.comparePassword(password, user.password);
+        // If passwords match, return token 
+        if (passwordCheck) {
+            const payload = { id: user.id, name: user.userName };
+            jwt.sign(
+                payload, 
+                key.secret, 
+                { expiresIn: 36000 },
+                (err, token) => {
+                    if (err) {
+                        err.password = "Error returning token";
+                        return res.status(500).json(err);
+                    }
+                    res.json({
+                        success: true,
+                        token
+                    });
+                }
+            )
+        } else {
+            err.password = "Incorrect Password";
+            return res.status(400).json(err);
+        }
+     } catch (e) {
+        return res.status(500).json(e);
+     }
+
+
+ })
